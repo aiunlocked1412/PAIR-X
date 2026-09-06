@@ -3,7 +3,12 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# NVIDIA Personal AI Router (PAIR)
+# PAIR-X — Universal Local AI Gateway
+
+> **Fork status:** PAIR-X extends NVIDIA Personal AI Router without rewriting its
+> existing Ollama and LM Studio paths. The first isolated extension is
+> [`services/nvpair-gateway`](services/nvpair-gateway); see the
+> [PAIR-X development specification](docs/PAIR-X-development-specification.md).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Security Policy](https://img.shields.io/badge/security-policy-green.svg)](SECURITY.md)

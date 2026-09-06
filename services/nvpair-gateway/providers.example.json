@@ -1,0 +1,27 @@
+{
+  "listen": "127.0.0.1:14322",
+  "providers": [
+    {
+      "id": "local-tts",
+      "name": "AI UNLOCK TTS",
+      "providerType": "custom-http",
+      "baseUrl": "http://127.0.0.1:8000",
+      "healthCheck": "/health",
+      "capabilities": ["tts", "voice-clone"],
+      "headers": {},
+      "routes": {
+        "tts": {
+          "method": "POST",
+          "path": "/tts",
+          "requestMapping": {
+            "text": "{{input}}",
+            "speaker": "{{voice}}",
+            "speed": "{{speed}}"
+          },
+          "responseType": "audio",
+          "timeoutSeconds": 120
+        }
+      }
+    }
+  ]
+}
