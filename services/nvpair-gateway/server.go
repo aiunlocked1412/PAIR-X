@@ -62,7 +62,8 @@ func (gateway *Gateway) RefreshHealth(ctx context.Context) {
 			status = "ONLINE"
 			if provider.HealthCheck != "" {
 				target := strings.TrimRight(provider.BaseURL, "/") + "/" + strings.TrimLeft(provider.HealthCheck, "/")
-				request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+				healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				request, err := http.NewRequestWithContext(healthCtx, http.MethodGet, target, nil)
 				if err == nil {
 					for name, value := range provider.Headers {
 						request.Header.Set(name, value)
@@ -78,6 +79,7 @@ func (gateway *Gateway) RefreshHealth(ctx context.Context) {
 				} else {
 					status = "OFFLINE"
 				}
+				cancel()
 			}
 		}
 		gateway.statusMu.Lock()

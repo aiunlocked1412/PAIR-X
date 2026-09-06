@@ -40,7 +40,9 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	gateway := NewGateway(config, &http.Client{Timeout: 30 * time.Second})
+	// Route contexts enforce timeoutSeconds; a global client timeout would
+	// incorrectly truncate providers configured for longer operations.
+	gateway := NewGateway(config, &http.Client{})
 	gateway.RefreshHealth(ctx)
 	go monitorHealth(ctx, gateway, *healthInterval)
 
