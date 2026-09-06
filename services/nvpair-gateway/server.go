@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"net"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -26,13 +26,12 @@ type Gateway struct {
 }
 
 type providerView struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	ProviderType  string   `json:"providerType"`
-	Capabilities  []string `json:"capabilities"`
-	Disabled      bool     `json:"disabled"`
-	PreferredNode string   `json:"preferredNode,omitempty"`
-	Status        string   `json:"status"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	ProviderType string   `json:"providerType"`
+	Capabilities []string `json:"capabilities"`
+	Disabled     bool     `json:"disabled"`
+	Status       string   `json:"status"`
 }
 
 func NewGateway(config Config, client *http.Client) *Gateway {
@@ -94,15 +93,7 @@ func (gateway *Gateway) providerStatus(id string) string {
 }
 
 func (gateway *Gateway) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if !isLoopbackHost(request.Host) {
-		writeJSON(response, http.StatusForbidden, map[string]any{"error": map[string]string{"message": "non-loopback host rejected"}})
-		return
-	}
 	if request.Method == http.MethodPost {
-		if request.Header.Get("Origin") != "" {
-			writeJSON(response, http.StatusForbidden, map[string]any{"error": map[string]string{"message": "browser-origin requests require gateway authentication"}})
-			return
-		}
 		mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 		if err != nil || mediaType != "application/json" {
 			writeJSON(response, http.StatusUnsupportedMediaType, map[string]any{"error": map[string]string{"message": "Content-Type must be application/json"}})
@@ -128,19 +119,6 @@ func (gateway *Gateway) ServeHTTP(response http.ResponseWriter, request *http.Re
 	http.NotFound(response, request)
 }
 
-func isLoopbackHost(hostPort string) bool {
-	host := hostPort
-	if parsedHost, _, err := net.SplitHostPort(hostPort); err == nil {
-		host = parsedHost
-	}
-	host = strings.Trim(host, "[]")
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	address := net.ParseIP(host)
-	return address != nil && address.IsLoopback()
-}
-
 func (gateway *Gateway) forwardCapability(response http.ResponseWriter, request *http.Request, capability string) {
 	provider, route, ok := gateway.findProvider(capability)
 	if !ok {
@@ -155,6 +133,15 @@ func (gateway *Gateway) forwardCapability(response http.ResponseWriter, request 
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		writeJSON(response, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": "request must contain one JSON object"}})
+		return
+	}
+	inputText, hasInput := standardRequest["input"].(string)
+	if !hasInput || strings.TrimSpace(inputText) == "" {
+		writeJSON(response, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": "input is required"}})
+		return
+	}
+	if err := validateMapping(route.RequestMapping, standardRequest); err != nil {
+		writeJSON(response, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
 		return
 	}
 	mapped := resolveMapping(route.RequestMapping, standardRequest)
@@ -226,6 +213,32 @@ func contains(values []string, wanted string) bool {
 	return false
 }
 
+var mappingPlaceholder = regexp.MustCompile(`\{\{\s*([^{}\s]+)\s*\}\}`)
+
+func validateMapping(value any, input map[string]any) error {
+	switch typed := value.(type) {
+	case string:
+		for _, match := range mappingPlaceholder.FindAllStringSubmatch(typed, -1) {
+			if _, exists := input[match[1]]; !exists {
+				return fmt.Errorf("request mapping references missing field %q", match[1])
+			}
+		}
+	case map[string]any:
+		for _, nested := range typed {
+			if err := validateMapping(nested, input); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if err := validateMapping(nested, input); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func resolveMapping(template map[string]any, input map[string]any) map[string]any {
 	if len(template) == 0 {
 		return input
@@ -267,11 +280,13 @@ func resolveValue(value any, input map[string]any) any {
 func (gateway *Gateway) listCapabilities(response http.ResponseWriter) {
 	seen := make(map[string]struct{})
 	for _, provider := range gateway.config.Providers {
-		if provider.Disabled {
+		if provider.Disabled || gateway.providerStatus(provider.ID) == "offline" {
 			continue
 		}
 		for _, capability := range provider.Capabilities {
-			seen[capability] = struct{}{}
+			if _, routable := provider.Routes[capability]; routable {
+				seen[capability] = struct{}{}
+			}
 		}
 	}
 	capabilities := make([]string, 0, len(seen))
@@ -288,8 +303,7 @@ func (gateway *Gateway) listProviders(response http.ResponseWriter) {
 		providers = append(providers, providerView{
 			ID: provider.ID, Name: provider.Name, ProviderType: provider.ProviderType,
 			Capabilities: append([]string(nil), provider.Capabilities...),
-			Disabled:     provider.Disabled, PreferredNode: provider.PreferredNode,
-			Status: gateway.providerStatus(provider.ID),
+			Disabled:     provider.Disabled, Status: gateway.providerStatus(provider.ID),
 		})
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"object": "list", "data": providers})

@@ -19,8 +19,7 @@
             "speed": "{{speed}}"
           },
           "responseType": "audio",
-          "timeoutSeconds": 120,
-          "retrySafe": false
+          "timeoutSeconds": 120
         }
       }
     }

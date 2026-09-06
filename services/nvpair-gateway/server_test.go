@@ -23,7 +23,7 @@ func newGatewayRequest(method, target string, body io.Reader) *http.Request {
 	return request
 }
 
-func TestSpeechEndpointRejectsBrowserAndNonLoopbackRequests(t *testing.T) {
+func TestSpeechEndpointRequiresJSONContentType(t *testing.T) {
 	hits := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		hits++
@@ -35,29 +35,13 @@ func TestSpeechEndpointRejectsBrowserAndNonLoopbackRequests(t *testing.T) {
 		Capabilities: []string{"tts"}, Routes: map[string]Route{"tts": {Method: "POST", Path: "/tts"}},
 	}}}, upstream.Client())
 
-	tests := []struct {
-		name        string
-		host        string
-		origin      string
-		contentType string
-		wantStatus  int
-	}{
-		{name: "non-loopback host", host: "attacker.example", contentType: "application/json", wantStatus: http.StatusForbidden},
-		{name: "browser origin", host: "127.0.0.1:14322", origin: "https://attacker.example", contentType: "application/json", wantStatus: http.StatusForbidden},
-		{name: "non-json content", host: "127.0.0.1:14322", contentType: "text/plain", wantStatus: http.StatusUnsupportedMediaType},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/v1/audio/speech", bytes.NewBufferString(`{"input":"hello"}`))
-			request.Host = test.host
-			request.Header.Set("Origin", test.origin)
-			request.Header.Set("Content-Type", test.contentType)
-			response := httptest.NewRecorder()
-			gateway.ServeHTTP(response, request)
-			if response.Code != test.wantStatus {
-				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
-			}
-		})
+	request := httptest.NewRequest(http.MethodPost, "/v1/audio/speech", bytes.NewBufferString(`{"input":"hello"}`))
+	request.Host = "192.168.1.10:14322"
+	request.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+	gateway.ServeHTTP(response, request)
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want 415", response.Code)
 	}
 	if hits != 0 {
 		t.Fatalf("upstream received %d rejected requests, want 0", hits)
@@ -74,6 +58,23 @@ func TestSpeechEndpointRejectsTrailingJSON(t *testing.T) {
 	gateway.ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want trailing JSON rejected", response.Code)
+	}
+}
+
+func TestSpeechEndpointRejectsMissingInputAndUnresolvedMapping(t *testing.T) {
+	gateway := NewGateway(Config{Providers: []Provider{{
+		ID: "tts", Name: "TTS", ProviderType: "custom-http", BaseURL: "http://127.0.0.1:1",
+		Capabilities: []string{"tts"}, Routes: map[string]Route{"tts": {
+			Method: "POST", Path: "/tts", RequestMapping: map[string]any{"text": "{{input}}", "speaker": "{{missing}}"},
+		}},
+	}}}, http.DefaultClient)
+	for _, body := range []string{`{}`, `{"input":"hello"}`} {
+		request := newGatewayRequest(http.MethodPost, "/v1/audio/speech", bytes.NewBufferString(body))
+		response := httptest.NewRecorder()
+		gateway.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d, want 400", body, response.Code)
+		}
 	}
 }
 
@@ -201,8 +202,8 @@ func TestSpeechEndpointMapsAndForwardsToCustomHTTPProvider(t *testing.T) {
 
 func TestCapabilitiesEndpointReturnsSortedDynamicCapabilities(t *testing.T) {
 	gateway := NewGateway(Config{Providers: []Provider{
-		{ID: "one", Capabilities: []string{"tts", "music"}},
-		{ID: "two", Capabilities: []string{"llm", "tts"}, Disabled: true},
+		{ID: "one", Capabilities: []string{"tts", "music", "voice-clone"}, Routes: map[string]Route{"tts": {}, "music": {}}},
+		{ID: "two", Capabilities: []string{"llm", "tts"}, Routes: map[string]Route{"llm": {}}, Disabled: true},
 	}}, http.DefaultClient)
 
 	request := newGatewayRequest(http.MethodGet, "/v1/capabilities", nil)

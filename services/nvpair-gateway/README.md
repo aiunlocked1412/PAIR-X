@@ -23,7 +23,7 @@ cp providers.example.json providers.json
 go run . -config providers.json
 ```
 
-The default listen address is `127.0.0.1:14322`. Until gateway authentication and cluster mTLS land, non-loopback listen addresses are rejected. Provider credentials and endpoint URLs remain only in the local configuration and are omitted from the provider-list API.
+The default listen address is `127.0.0.1:14322`. For a trusted home/office LAN, set `"listen": "0.0.0.0:14322"` and connect through the host's LAN address or local DNS name. PAIR-X does not add gateway authentication in this MVP, so do not expose that port to the public internet. Provider credentials and endpoint URLs remain only in the local configuration and are omitted from the provider-list API.
 
 ## Test
 

@@ -48,6 +48,8 @@ func main() {
 		Addr:              config.Listen,
 		Handler:           gateway,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		<-ctx.Done()

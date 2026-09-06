@@ -21,11 +21,11 @@ func TestLoadConfigRejectsCredentialBearingBaseURL(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejectsNonLoopbackListenerWithoutAuthentication(t *testing.T) {
+func TestLoadConfigAcceptsLANListener(t *testing.T) {
 	configJSON := `{"listen":"0.0.0.0:14322","providers":[]}`
-	_, err := LoadConfig(strings.NewReader(configJSON))
-	if err == nil || !strings.Contains(err.Error(), "listen must use a loopback address") {
-		t.Fatalf("error = %v, want non-loopback listener rejection", err)
+	config, err := LoadConfig(strings.NewReader(configJSON))
+	if err != nil || config.Listen != "0.0.0.0:14322" {
+		t.Fatalf("config = %#v, error = %v, want LAN listener accepted", config, err)
 	}
 }
 
@@ -66,5 +66,13 @@ func TestLoadConfigRejectsDuplicateProviderIDs(t *testing.T) {
 	_, err := LoadConfig(strings.NewReader(configJSON))
 	if err == nil || !strings.Contains(err.Error(), "duplicate provider id") {
 		t.Fatalf("error = %v, want duplicate provider id error", err)
+	}
+}
+
+func TestLoadConfigRejectsUnsupportedRetryConfiguration(t *testing.T) {
+	configJSON := `{"providers":[{"id":"tts","name":"TTS","providerType":"custom-http","baseUrl":"http://127.0.0.1:9000","capabilities":["tts"],"maxRetries":2}]}`
+	_, err := LoadConfig(strings.NewReader(configJSON))
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("error = %v, want unsupported field rejection", err)
 	}
 }

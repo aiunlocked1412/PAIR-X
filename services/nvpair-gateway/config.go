@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/url"
 	"strings"
 )
@@ -18,18 +17,15 @@ type Config struct {
 }
 
 type Provider struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	ProviderType  string            `json:"providerType"`
-	BaseURL       string            `json:"baseUrl"`
-	HealthCheck   string            `json:"healthCheck,omitempty"`
-	Capabilities  []string          `json:"capabilities"`
-	Headers       map[string]string `json:"headers,omitempty"`
-	Routes        map[string]Route  `json:"routes,omitempty"`
-	Disabled      bool              `json:"disabled,omitempty"`
-	MaxRetries    int               `json:"maxRetries,omitempty"`
-	PreferredNode string            `json:"preferredNode,omitempty"`
-	Fallback      []string          `json:"fallbackProviders,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	ProviderType string            `json:"providerType"`
+	BaseURL      string            `json:"baseUrl"`
+	HealthCheck  string            `json:"healthCheck,omitempty"`
+	Capabilities []string          `json:"capabilities"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Routes       map[string]Route  `json:"routes,omitempty"`
+	Disabled     bool              `json:"disabled,omitempty"`
 }
 
 type Route struct {
@@ -38,21 +34,19 @@ type Route struct {
 	RequestMapping map[string]any `json:"requestMapping,omitempty"`
 	ResponseType   string         `json:"responseType,omitempty"`
 	TimeoutSeconds int            `json:"timeoutSeconds,omitempty"`
-	RetrySafe      bool           `json:"retrySafe,omitempty"`
 }
 
 func LoadConfig(reader io.Reader) (Config, error) {
 	var config Config
-	if err := json.NewDecoder(reader).Decode(&config); err != nil {
+	decoder := json.NewDecoder(reader)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	if config.Listen == "" {
 		config.Listen = "127.0.0.1:14322"
 	}
-	host, _, err := net.SplitHostPort(config.Listen)
-	if err != nil || (host != "localhost" && (net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback())) {
-		return Config{}, fmt.Errorf("listen must use a loopback address until gateway authentication is configured")
-	}
+
 	seen := make(map[string]struct{}, len(config.Providers))
 	for i := range config.Providers {
 		provider := &config.Providers[i]
